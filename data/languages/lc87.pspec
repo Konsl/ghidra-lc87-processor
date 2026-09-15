@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- See Relax specification: Ghidra/Framework/SoftwareModeling/data/languages/processor_spec.rxg -->
+
+<processor_spec>
+	<programcounter register="PC"/>
+	<volatile outputop="write_volatile" inputop="read_volatile">
+		<range space="ram" first="0xFE00" last="0xFEFF"/>
+		<range space="bitdata" first="0xFE00" last="0xFEFF"/>
+	</volatile>
+	<default_symbols>
+		<symbol name="RESET" address="rom:0x00" entry="true" />
+		<symbol name="INT0" address="rom:0x03" entry="true" />
+		<symbol name="INT1" address="rom:0x0B" entry="true" />
+		<symbol name="INT2" address="rom:0x13" entry="true" />
+		<symbol name="INT3" address="rom:0x1B" entry="true" />
+		<symbol name="INT6" address="rom:0x23" entry="true" />
+		<symbol name="INT7" address="rom:0x2B" entry="true" />
+		<symbol name="INT_33" address="rom:0x33" entry="true" />
+		<symbol name="INT_3B" address="rom:0x3B" entry="true" />
+		<symbol name="INT_43" address="rom:0x43" entry="true" />
+		<symbol name="INT_4B" address="rom:0x4B" entry="true" />
+
+		<!--
+		grep -h _sfrbyte *.sfr | grep -Ev '^ */(\*|/)' | tr '\t()' '   ' | sed -E 's/ +/ /g' | cut -d ' ' -f 2,4 | sed -E 's/^_//' | awk '{ print $2" "$1 }' | sed -E 's/^0x0/0x/' | sort -u | uniq -u -w 6 | awk '{ print "<symbol name=\""$2"\" address=\"ram:"$1"\" />" }'
+		 -->
+		<symbol name="A" address="ram:0xFE00" />
+		<symbol name="B" address="ram:0xFE01" />
+		<symbol name="C" address="ram:0xFE02" />
+		<symbol name="USBDIV" address="ram:0xFE04" />
+		<symbol name="IFLGR" address="ram:0xFE05" />
+		<symbol name="PSW" address="ram:0xFE06" />
+		<symbol name="PCON" address="ram:0xFE07" />
+		<symbol name="IE" address="ram:0xFE08" />
+		<symbol name="IP" address="ram:0xFE09" />
+		<symbol name="SPL" address="ram:0xFE0A" />
+		<symbol name="SPH" address="ram:0xFE0B" />
+		<symbol name="CLKDIV" address="ram:0xFE0C" />
+		<symbol name="OCR" address="ram:0xFE0E" />
+		<symbol name="WDT" address="ram:0xFE0F" />
+		<symbol name="T0CNT" address="ram:0xFE10" />
+		<symbol name="T0PRR" address="ram:0xFE11" />
+		<symbol name="T0L" address="ram:0xFE12" />
+		<symbol name="T0H" address="ram:0xFE13" />
+		<symbol name="T0LR" address="ram:0xFE14" />
+		<symbol name="T0HR" address="ram:0xFE15" />
+		<symbol name="T0CAL" address="ram:0xFE16" />
+		<symbol name="T0CAH" address="ram:0xFE17" />
+		<symbol name="T1CNT" address="ram:0xFE18" />
+		<symbol name="T1PRR" address="ram:0xFE19" />
+		<symbol name="T1L" address="ram:0xFE1A" />
+		<symbol name="T1H" address="ram:0xFE1B" />
+		<symbol name="T1LR" address="ram:0xFE1C" />
+		<symbol name="T1HR" address="ram:0xFE1D" />
+		<symbol name="T0CA1L" address="ram:0xFE1E" />
+		<symbol name="T0CA1H" address="ram:0xFE1F" />
+		<symbol name="PD" address="ram:0xFE26" />
+		<symbol name="SCON0" address="ram:0xFE30" />
+		<symbol name="SBR0" address="ram:0xFE32" />
+		<symbol name="SCTR0" address="ram:0xFE33" />
+		<symbol name="SCON1" address="ram:0xFE34" />
+		<symbol name="SBUF1" address="ram:0xFE35" />
+		<symbol name="SBR1" address="ram:0xFE36" />
+		<symbol name="SWCON0" address="ram:0xFE37" />
+		<symbol name="SCTR2" address="ram:0xFE3A" />
+		<symbol name="SI2PC" address="ram:0xFE3B" />
+		<symbol name="T45CNT" address="ram:0xFE3C" />
+		<symbol name="T4R" address="ram:0xFE3E" />
+		<symbol name="T5R" address="ram:0xFE3F" />
+		<symbol name="P0" address="ram:0xFE40" />
+		<symbol name="P0DDR" address="ram:0xFE41" />
+		<symbol name="P1" address="ram:0xFE44" />
+		<symbol name="P1DDR" address="ram:0xFE45" />
+		<symbol name="P1FCR" address="ram:0xFE46" />
+		<symbol name="P1TST" address="ram:0xFE47" />
+		<symbol name="P2" address="ram:0xFE48" />
+		<symbol name="P3" address="ram:0xFE4C" />
+		<symbol name="P3DDR" address="ram:0xFE4D" />
+		<symbol name="I67CR" address="ram:0xFE4E" />
+		<symbol name="ADCRC" address="ram:0xFE58" />
+		<symbol name="ADMRC" address="ram:0xFE59" />
+		<symbol name="ADRLC" address="ram:0xFE5A" />
+		<symbol name="ADRHC" address="ram:0xFE5B" />
+		<symbol name="P7" address="ram:0xFE5C" />
+		<symbol name="ADCR" address="ram:0xFE60" />
+		<symbol name="ADRR" address="ram:0xFE61" />
+		<symbol name="DACR" address="ram:0xFE62" />
+		<symbol name="P8" address="ram:0xFE63" />
+		<symbol name="BMWDT" address="ram:0xFE65" />
+		<symbol name="PB" address="ram:0xFE6C" />
+		<symbol name="PBDDR" address="ram:0xFE6D" />
+		<symbol name="PC" address="ram:0xFE70" />
+		<symbol name="PCDDR" address="ram:0xFE71" />
+		<symbol name="T67CNT" address="ram:0xFE78" />
+		<symbol name="WDTCNT" address="ram:0xFE79" />
+		<symbol name="T6R" address="ram:0xFE7A" />
+		<symbol name="T7R" address="ram:0xFE7B" />
+		<symbol name="NKREG" address="ram:0xFE7D" />
+		<symbol name="FSR0" address="ram:0xFE7E" />
+		<symbol name="BTCR" address="ram:0xFE7F" />
+		<symbol name="UCON0" address="ram:0xFED0" />
+		<symbol name="UCON1" address="ram:0xFED1" />
+		<symbol name="UBR" address="ram:0xFED2" />
+		<symbol name="TBUF" address="ram:0xFED3" />
+		<symbol name="RBUF" address="ram:0xFED4" />
+		<symbol name="UMDSL" address="ram:0xFED5" />
+
+	</default_symbols>
+
+	<default_memory_blocks>
+		<!-- thoses vary depending on the mcu, here are the max values that should handle everything -->
+		<memory_block name="ROM" start_address="rom:0" length="0x40000" initialized="false"/>
+
+		<memory_block name="RAM" start_address="ram:0" length="0xFE00" initialized="false"/>
+		<memory_block name="SFR" start_address="ram:0xFE00" length="0x100" initialized="false" mode="rwv"/>
+
+		<memory_block name="BITDATA" start_address="bitdata:0" length="0xFF00" initialized="false"/> <!-- covers SFR as well because a few are 9-bit long -->
+		<!-- <memory_block name="SFR_BITDATA" start_address="bitdata:0xFE00" length="0x100" initialized="false" mode="rwv"/> -->
+
+		<!-- not really interesting to display -->
+		<!-- <memory_block name="reserved" start_address="ram:0xFF00" length="0x100" initialized="false" mode="v"/> -->
+
+		<!-- 16 MB external mem, disabled for readability in ghidra -->
+		<!-- <memory_block name="EXTERNAL" start_address="xdata:0x0" length="0x1000000" initialized="false" mode="rw"/> -->
+	</default_memory_blocks>
+
+</processor_spec>

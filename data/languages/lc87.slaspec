@@ -1,0 +1,346 @@
+define endian=little;
+define alignment=1;
+
+########################## SPACES
+
+# rom is at most 2 banks of 128kB each
+# bank 0 : 00000h - 1FFFFh
+# bank 1 : 20000h - 3FFFFh
+define space rom		type=ram_space	size=3  wordsize=1  default;
+
+# ram wordsize is 9 bits (well, mostly) but it's easier to dedicate a separate space for the 9th bit
+define space ram		type=ram_space	size=2  wordsize=1;
+define space bitdata	type=ram_space	size=2  wordsize=1;
+
+# mysterious 16MB "External data memory space" : 000000h - FFFFFFh
+define space xdata	type=ram_space	size=3  wordsize=1;
+
+define space register	type=register_space	size=1;
+
+########################## REGISTERS
+
+# total program counter is 17 bits PC + 1 bank bit BNK
+define register offset=0x00 size=3 [ PC ];
+define register offset=0x03 size=1 [ BNK ];
+
+########################## SFR
+
+define ram offset=0xFE00 size=1 [ A ]; # ACC
+define ram offset=0xFE01 size=1 [ B ];
+define ram offset=0xFE02 size=1 [ C ];
+define ram offset=0xFE06 size=1 [ PSW ];
+define ram offset=0xFE0A size=1 [ SPL ];
+define ram offset=0xFE0B size=1 [ SPH ];
+
+define ram offset=0xFE0A size=2 [ SP ];
+define ram offset=0xFE00 size=2 [ BA ];
+
+# Program Status Word
+@define PF 		"PSW[0,1]"  # PF (bit 0): Parity flag
+@define P1 		"PSW[1,1]"  # P1 (bit 1): RAM bit 8 data flag
+@define OV 		"PSW[2,1]"  # OV (bit 2): Overflow flag
+@define LDCBNK	"PSW[3,1]"  # LDCBNK (bit 3): Bank flag for the table look-up instruction (LDCW)
+@define UF0		"PSW[4,1]"  # PSWB4 (bit 4): User flag (can be used by the user freely)
+@define UF1		"PSW[5,1]"  # PSWB5 (bit 5): User flag (can be used by the user freely)
+@define AC 		"PSW[6,1]"  # AC (bit 6): Auxiliary carry flag
+@define CY 		"PSW[7,1]"  # CY (bit 7): Carry flag
+
+########################## Indirect Addressing Registers
+
+define ram offset=0x0000 size=2 [ R0  R1  R2  R3  R4  R5  R6  R7
+                                  R8  R9  R10 R11 R12 R13 R14 R15
+                                  R16 R17 R18 R19 R20 R21 R22 R23
+                                  R24 R25 R26 R27 R28 R29 R30 R31
+                                  R32 R33 R34 R35 R36 R37 R38 R39
+                                  R40 R41 R42 R43 R44 R45 R46 R47
+                                  R48 R49 R50 R51 R52 R53 R54 R55
+                                  R56 R57 R58 R59 R60 R61 R62 R63 ];
+
+########################## Tokens
+
+define token opbyte (8)
+	op0_8		= (0,7)
+	op3_5		= (3,7)
+	op4_1		= (4,4)
+	mode		= (0,2)
+	alt			= (0,2)
+;
+
+define token instr8 (8)
+	byte0		= (0,7)
+	byte0s		= (0,7) signed
+
+	bit0		= (0,0)
+	bit6		= (6,6)
+	bit7		= (7,7)
+
+	Rn1			= (1,6)
+	off0_7s		= (0,6) signed
+;
+
+define token instr16 (16)
+	short0		= (0,15)
+	sign4		= (4,4)
+	offH		= (0,2)
+	offL		= (8,15)
+	rel3_5		= (3,7)
+	bits13_3	= (13,15)
+;
+
+define token intr24 (24)
+	op0_1		= (0,0)
+	op1_7		= (1,7)
+	byte8		= (8,15)
+	byte16		= (16,23)
+;
+
+attach variables [ Rn1 ]  [ R0  R1  R2  R3  R4  R5  R6  R7
+							R8  R9  R10 R11 R12 R13 R14 R15
+							R16 R17 R18 R19 R20 R21 R22 R23
+							R24 R25 R26 R27 R28 R29 R30 R31
+							R32 R33 R34 R35 R36 R37 R38 R39
+							R40 R41 R42 R43 R44 R45 R46 R47
+							R48 R49 R50 R51 R52 R53 R54 R55
+							R56 R57 R58 R59 R60 R61 R62 R63 ];
+
+#attach names [ alt ] [ "" "i" "a" "s" "0" "1" "l" "w" ]; # debug
+attach names [ alt ] [ "" "" "" "" "" "" "l" "w" ];
+
+i_fmt: "#"byte0 	is byte0 { tmp:1 = byte0; export tmp; } 										#i Immediate addressing (#)
+I_fmt: "#"short0	is short0 { tmp:2 = short0; export tmp; } 										#I Immediate addressing
+r_fmt: address	 	is byte0s [ address = inst_next + byte0s; ] { tmp:3 = address; export tmp; } 	#r
+zero_fmt: byte0 	is byte0 { export *[ram]:2 byte0; }												#0 Direct Addressing (dst) 00h-FFh
+s_fmt: address	 	is byte0 [ address = 0xfe00 | byte0; ] { export *[ram]:2 address; }				#s Direct Addressing (dst) FE00h-FEFFh
+A_fmt: address		is op0_1 & (byte8 & byte16) [ address = (byte8 | byte16<<8 | op0_1<<16) | (inst_start & 0x20000); ] { tmp:3 = address; export tmp; } #A
+m_fmt: address		is short0 [ address = short0 & 0x1fff; ] { tmp:2 = address; export tmp; }		#m
+B_fmt: bits13_3		is bits13_3 { tmp:1 = bits13_3; export tmp; }		 							#B
+
+R_fmt: address		is sign4=0 & offL & offH [ address = ((inst_next + ((offH<<8) | offL))            & 0x1FFFF) | (inst_start & 0x20000); ] { tmp:3 = address; export tmp; }	# positive offset
+R_fmt: address		is sign4=1 & offL & offH [ address = ((inst_next + ((offH<<8) | offL | 0xFFF800)) & 0x1FFFF) | (inst_start & 0x20000); ] { tmp:3 = address; export tmp; }	# negative offset
+
+at_fmt: [Rn1] 		is bit0=0 & bit7=0 & Rn1 { export *[ram]:2 Rn1; }								#_@ Indirect Register Indirect Addressing ([Rn])
+at_fmt: [Rn1",C]"	is bit0=1 & bit7=0 & Rn1 { tmp:2 = Rn1 + sext(C); export *[ram]:2 tmp; }		#_@ Indirect Register + C Register Indirect Addressing ([Rn, C])
+at_fmt: [+off0_7s] 	is bit7=1 & bit6=0 & off0_7s { tmp:2 = R0 + off0_7s; export *[ram]:2 tmp; }		#_@ Indirect Register (R0) + Offset Value Indirect Addressing ([off])
+at_fmt: [-off0_7s]	is bit7=1 & bit6=1 & off0_7s { tmp:2 = R0 + off0_7s; export *[ram]:2 tmp; }		#_@ Indirect Register (R0) + negative Offset Value Indirect Addressing ([off])
+
+ias01M: "#"byte0	is mode=1 ; byte0 { tmp:2 = byte0; export tmp; } 								#_i
+ias01M: at_fmt		is mode=2 ; at_fmt { export at_fmt; }											#_@
+ias01M: s_fmt		is mode=3 ; s_fmt { export s_fmt; }												#_s
+ias01M: zero_fmt	is mode=4 ; zero_fmt { export zero_fmt; } 										#_0
+ias01M: address		is mode=5 ; byte0 [ address = 0x100 | byte0; ] { export *[ram]:2 address; } 	#_1 Direct Addressing (dst) 100h-1FFh
+ias01M: short0	 	is ( mode=6 | mode=7 ) ; short0  { export *[ram]:2 short0; } 					#_M Direct Addressing (dst) 0000h-FFFFh
+
+s0: zero_fmt		is op4_1=0 ; zero_fmt { export zero_fmt; } 										#_0
+s0: s_fmt			is op4_1=1 ; s_fmt { export s_fmt; }											#_s
+
+########################## Macros
+
+macro additionAreg(op) {
+	$(CY) = carry(A, op:1);
+	$(OV) = scarry(A, op:1);
+	A = A + op:1;
+	$(PF) = A[0,1] ^ A[1,1] ^ A[2,1] ^ A[3,1] ^ A[4,1] ^ A[5,1] ^ A[6,1] ^ A[7,1];
+}
+
+macro additionAregWithCarry(op) {
+	local CYcpy = $(CY);
+	$(CY) = carry(A, op:1);
+	$(OV) = scarry(A, op:1);
+	local tmp = A + op:1;
+	$(CY) = $(CY) || carry(tmp, CYcpy);
+	$(OV) = $(OV) ^^ scarry(tmp, CYcpy);
+	A = tmp + CYcpy;
+	$(PF) = A[0,1] ^ A[1,1] ^ A[2,1] ^ A[3,1] ^ A[4,1] ^ A[5,1] ^ A[6,1] ^ A[7,1];
+}
+
+########### 8/16-BIT ARITHMETIC INSTRUCTIONS
+
+:add^alt ias01M 			is (op3_5=0x14 & mode>0 & mode<7 & alt) ... & ias01M { additionAreg(ias01M); }
+
+:addc^alt ias01M 			is (op3_5=0x16 & mode>0 & mode<7 & alt) ... & ias01M { additionAregWithCarry(ias01M); }
+
+:dec^alt ias01M 			is (op3_5=0x13 & mode>1 & mode<8 & alt) ... & ias01M { }
+
+:inc^alt ias01M 			is (op3_5=0x11 & mode>1 & mode<8 & alt) ... & ias01M { }
+
+:sub^alt ias01M 			is (op3_5=0x18 & mode>0 & mode<7 & alt) ... & ias01M { }
+
+:subc^alt ias01M 			is (op3_5=0x1a & mode>0 & mode<7 & alt) ... & ias01M { }
+
+
+########### STACK ARITHMETIC INSTRUCTIONS
+
+:div16						is op0_8=0x40 ; byte0=0x0 { }
+:mul16						is op0_8=0x40 ; byte0=0x40 { }
+:div24						is op0_8=0x40 ; byte0=0x80 { }
+:mul24						is op0_8=0x40 ; byte0=0xC0 { }
+
+:fadd 						is op0_8=0x98 ; byte0=0x00 { }
+:faddc 						is op0_8=0x98 ; byte0=0x10 { }
+:fsub 						is op0_8=0x98 ; byte0=0x20 { }
+:fsubc 						is op0_8=0x98 ; byte0=0x30 { }
+:fnor 						is op0_8=0x98 ; byte0=0x40 { }
+:fand 						is op0_8=0x98 ; byte0=0x50 { }
+:for 						is op0_8=0x98 ; byte0=0x60 { }
+:fxor 						is op0_8=0x98 ; byte0=0x70 { }
+:faddw 						is op0_8=0x98 ; byte0=0x80 { }
+:faddcw 					is op0_8=0x98 ; byte0=0x90 { }
+:fsubw 						is op0_8=0x98 ; byte0=0xA0 { }
+:fsubcw 					is op0_8=0x98 ; byte0=0xB0 { }
+:fnorw 						is op0_8=0x98 ; byte0=0xC0 { }
+:fandw 						is op0_8=0x98 ; byte0=0xD0 { }
+:forw 						is op0_8=0x98 ; byte0=0xE0 { }
+:fxorw 						is op0_8=0x98 ; byte0=0xF0 { }
+
+########### 8-BIT LOGICAL INSTRUCTIONS
+
+:or^alt ias01M 				is (op3_5=0x1c & mode>0 & mode<7 & alt) ... & ias01M { }
+
+:and^alt ias01M 			is (op3_5=0x1e & mode>0 & mode<7 & alt) ... & ias01M { }
+
+########### BIT INSTRUCTIONS
+
+
+:bn s0,mode,r_fmt			is ((op3_5=5 | op3_5=7) & mode) ... & s0 ; r_fmt { }
+
+:bnm m_fmt,B_fmt,r_fmt		is op0_8=0xc7 ; m_fmt & B_fmt ; r_fmt { }
+
+:bp s0,mode,r_fmt			is ((op3_5=1 | op3_5=3) & mode) ... & s0 ; r_fmt { }
+
+:bpc m_fmt,B_fmt,r_fmt		is op0_8=0xa7 ; m_fmt & B_fmt ; r_fmt { }
+
+:bpm m_fmt,B_fmt,r_fmt		is op0_8=0xe7 ; m_fmt & B_fmt ; r_fmt { }
+
+:clr1 s0,mode				is ((op3_5=0x19 | op3_5=0x1b) & mode) ... & s0 { }
+
+:clr1m m_fmt,B_fmt			is op0_8=0xd7 ; m_fmt & B_fmt { }
+
+:not1 s0,mode				is ((op3_5=0x15 | op3_5=0x17) & mode) ... & s0 { }
+
+:not1m m_fmt,B_fmt			is op0_8=0xb7 ; m_fmt & B_fmt { }
+
+:set1 s0,mode				is ((op3_5=0x1d | op3_5=0x1f) & mode) ... & s0 { }
+
+:set1m m_fmt,B_fmt			is op0_8=0xf7 ; m_fmt & B_fmt { }
+
+
+########### 8/16-BIT TRANSFER INSTRUCTIONS
+
+:ld^alt ias01M 				is (op3_5=0x10 & mode>0 & mode<8 & alt) ... & ias01M { }
+
+:mov^alt i_fmt,ias01M 		is (op3_5=8 & mode>1 & mode<7 & alt) ... & ias01M ; i_fmt { }
+
+:st^alt ias01M 				is (op3_5=0x12 & mode>1 & mode<8 & alt) ... & ias01M { }
+
+:xch^alt ias01M 			is (op3_5=0xa & mode>1 & mode<8 & alt) ... & ias01M { }
+
+:ldx at_fmt					is op0_8=0x71 ; at_fmt {}
+
+:stx at_fmt					is op0_8=0x91 ; at_fmt {}
+
+
+########### 16-BIT TRANSFER INSTRUCTIONS
+
+:ldcw at_fmt				is op0_8=0x88 ; at_fmt {}
+
+:ldw at_fmt					is op0_8=7 ; at_fmt { }
+
+:ldw I_fmt					is op0_8=0x47 ; I_fmt { }
+
+:stw at_fmt					is op0_8=0x17 ; at_fmt { }
+
+
+########### ROTATE/SHIFT INSTRUCTIONS
+
+:ror 						is op0_8 = 0xc0 { }
+
+:rorc 						is op0_8 = 0xd0 { }
+
+:rol is op0_8 = 0xE0 { }
+
+:rolc 						is op0_8 = 0xf0 { }
+
+
+########### BRANCH INSTRUCTIONS
+
+:be^alt ias01M,r_fmt 		is (op3_5=0 & mode!=2 & mode>0 & mode<7 & alt) ... & ias01M ; r_fmt { }
+:be ias01M,i_fmt,r_fmt		is (op3_5=0 & mode=2) ... & ias01M ; i_fmt ; r_fmt { }
+
+:bne^alt ias01M,r_fmt 		is (op3_5=2 & mode!=2 & mode>0 & mode<7 & alt) ... & ias01M ; r_fmt { }
+:bne ias01M,i_fmt,r_fmt		is (op3_5=2 & mode=2) ... & ias01M ; i_fmt ; r_fmt { }
+
+:bnz r_fmt					is op0_8=0x99 ; r_fmt { }
+
+:bnzw r_fmt					is op0_8=0x51 ; r_fmt { }
+
+:br R_fmt					is (rel3_5=0xd | rel3_5=0xf) & R_fmt { }
+
+:bz r_fmt					is op0_8=0x89 ; r_fmt { }
+
+:bzw r_fmt					is op0_8=0x41 ; r_fmt { }
+
+:call A_fmt					is (op1_7=0x18) & A_fmt { }
+
+:dbnz^alt ias01M,r_fmt 		is (op3_5=4 & mode>1 & mode<7 & alt) ... & ias01M ; r_fmt { }
+
+:dbz^alt ias01M,r_fmt 		is (op3_5=6 & mode>1 & mode<7 & alt) ... & ias01M ; r_fmt { }
+
+:jmp A_fmt					is (op1_7=0x10) & A_fmt { }
+
+:rcall R_fmt				is (rel3_5=9 | rel3_5=0xb) & R_fmt { }
+
+:rcalla 					is op0_8 = 0x10 {}
+
+:ret 						is op0_8 = 0xa0 {
+	PC[16,1] = (*[bitdata]:1 SP) & 0x1;
+	SP = SP - 1;
+	PC[0,16] = *[ram]:2 SP;
+	BNK = ( *[bitdata]:1 SP ) & 0x1;
+	SP = SP - 1;
+}
+
+:reti 						is op0_8 = 0xb0 { }
+
+########### AUXILIARY INSTRUCTIONS
+
+# chgp1 Change P1 bit in Program Status Word
+# chgp3 Change Code Banck bit in Program Status Word
+
+
+########### STACK CONTROL INSTRUCTIONS
+
+:pop^alt ias01M 			is (op3_5=0xe & mode>1 & mode<8 & alt) ... & ias01M { }
+
+:popw at_fmt				is op0_8=0x37 ; at_fmt {}
+
+:pop_ba 					is op0_8 = 0x70 {
+#	B = *[ram]:1 SP;
+#	SP = SP - 1;
+#	A = *[ram]:1 SP;
+#	SP = SP - 1;
+}
+
+:pop_p						is op0_8=0x90 { }
+
+:push^alt ias01M 			is (op3_5=0xc & mode>0 & mode<8 & alt) ... & ias01M { }
+
+:pushw at_fmt				is op0_8=0x27 ; at_fmt {}
+
+:push_ba 					is op0_8 = 0x60 {
+#	SP = SP + 1;
+#	*[ram]:1 SP = A;
+#	SP = SP + 1;
+#	*[ram]:1 SP = B;
+}
+
+:push_p 					is op0_8 = 0x80 {
+#	SP = SP + 1;
+#	*[ram]:1 SP = PSW;
+}
+
+
+########### SYSTEM CONTROL INSTRUCTIONS
+
+:nop 						is op0_8 = 0x0 {}
+:brk 						is op0_8 = 0x50 {}
+

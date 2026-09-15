@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- See Relax specification: Ghidra/Framework/SoftwareModeling/data/languages/language_definitions.rxg -->
+
+<language_definitions>
+   <language processor="LC87"
+            endian="little"
+            size="16"
+            variant="default"
+            version="1.0"
+            slafile="lc87.sla"
+            processorspec="lc87.pspec"
+            id="lc87:LE:16:default">
+    <description>On Semiconductor/Sanyo LC87 microcontroller architecture</description>
+    <compiler name="default" spec="lc87.cspec" id="default"/>
+  </language>
+</language_definitions>
