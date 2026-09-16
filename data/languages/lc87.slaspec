@@ -20,8 +20,10 @@ define space register	type=register_space	size=1;
 ########################## REGISTERS
 
 # total program counter is 17 bits PC + 1 bank bit BNK
-define register offset=0x00 size=3 [ PC ];
-define register offset=0x03 size=1 [ BNK ];
+# define register offset=0x00 size=3 [ PC ];
+# define register offset=0x03 size=1 [ BNK ];
+# ( we dont use these registers; instead, we use the program counter stored
+#   internally by Ghidra and split inst_next into BNK + PC / goto (BNK + PC) )
 
 ########################## SFR
 
@@ -108,15 +110,15 @@ attach names [ alt ] [ "" "" "" "" "" "" "l" "w" ];
 
 i_fmt: "#"byte0 	is byte0 { tmp:1 = byte0; export tmp; } 										#i Immediate addressing (#)
 I_fmt: "#"short0	is short0 { tmp:2 = short0; export tmp; } 										#I Immediate addressing
-r_fmt: address	 	is byte0s [ address = inst_next + byte0s; ] { tmp:3 = address; export tmp; } 	#r
+r_fmt: address	 	is byte0s [ address = inst_next + byte0s; ] { export *:3 address; } 	        #r
 zero_fmt: byte0 	is byte0 { export *[ram]:2 byte0; }												#0 Direct Addressing (dst) 00h-FFh
 s_fmt: address	 	is byte0 [ address = 0xfe00 | byte0; ] { export *[ram]:2 address; }				#s Direct Addressing (dst) FE00h-FEFFh
 A_fmt: address		is op0_1 & (byte8 & byte16) [ address = (byte8 | byte16<<8 | op0_1<<16) | (inst_start & 0x20000); ] { tmp:3 = address; export tmp; } #A
 m_fmt: address		is short0 [ address = short0 & 0x1fff; ] { tmp:2 = address; export tmp; }		#m
 B_fmt: bits13_3		is bits13_3 { tmp:1 = bits13_3; export tmp; }		 							#B
 
-R_fmt: address		is sign4=0 & offL & offH [ address = ((inst_next + ((offH<<8) | offL))            & 0x1FFFF) | (inst_start & 0x20000); ] { tmp:3 = address; export tmp; }	# positive offset
-R_fmt: address		is sign4=1 & offL & offH [ address = ((inst_next + ((offH<<8) | offL | 0xFFF800)) & 0x1FFFF) | (inst_start & 0x20000); ] { tmp:3 = address; export tmp; }	# negative offset
+R_fmt: address		is sign4=0 & offL & offH [ address = ((inst_next + ((offH<<8) | offL))            & 0x1FFFF) | (inst_start & 0x20000); ] { export *:3 address; }	# positive offset
+R_fmt: address		is sign4=1 & offL & offH [ address = ((inst_next + ((offH<<8) | offL | 0xFFF800)) & 0x1FFFF) | (inst_start & 0x20000); ] { export *:3 address; }	# negative offset
 
 at_fmt: [Rn1] 		is bit0=0 & bit7=0 & Rn1 { export *[ram]:2 Rn1; }								#_@ Indirect Register Indirect Addressing ([Rn])
 at_fmt: [Rn1",C]"	is bit0=1 & bit7=0 & Rn1 { tmp:2 = Rn1 + sext(C); export *[ram]:2 tmp; }		#_@ Indirect Register + C Register Indirect Addressing ([Rn, C])
@@ -151,6 +153,25 @@ macro additionAregWithCarry(op) {
 	$(OV) = $(OV) ^^ scarry(tmp, CYcpy);
 	A = tmp + CYcpy;
 	$(PF) = A[0,1] ^ A[1,1] ^ A[2,1] ^ A[3,1] ^ A[4,1] ^ A[5,1] ^ A[6,1] ^ A[7,1];
+}
+
+macro popReturnPointer(out) {
+    local tmp:3 = 0;
+	tmp[16,1] = (*[bitdata]:1 SP) & 0x1;
+	SP = SP - 1;
+	tmp[0,16] = *[ram]:2 SP;
+	tmp[17,1] = ( *[bitdata]:1 SP ) & 0x1;
+	SP = SP - 1;
+    out = tmp;
+}
+
+macro pushReturnPointer(x) {
+    local val:3 = x;
+    SP = SP + 1;
+    *[ram]:2 SP = val[0,16];
+    *[bitdata]:1 SP = val[17,1];
+    SP = SP + 1;
+    *[bitdata]:1 SP = val[16,1];
 }
 
 ########### 8/16-BIT ARITHMETIC INSTRUCTIONS
@@ -201,15 +222,34 @@ macro additionAregWithCarry(op) {
 ########### BIT INSTRUCTIONS
 
 
-:bn s0,mode,r_fmt			is ((op3_5=5 | op3_5=7) & mode) ... & s0 ; r_fmt { }
+:bn s0,mode,r_fmt			is ((op3_5=5 | op3_5=7) & mode) ... & s0 ; r_fmt {
+    local tmp:1 = ((*[ram] s0) << mode) & 0x1;
+    if (tmp == 0) goto r_fmt;
+}
 
-:bnm m_fmt,B_fmt,r_fmt		is op0_8=0xc7 ; m_fmt & B_fmt ; r_fmt { }
+:bnm m_fmt,B_fmt,r_fmt		is op0_8=0xc7 ; m_fmt & B_fmt ; r_fmt {
+    local tmp:1 = ((*[ram] m_fmt) << B_fmt) & 0x1;
+    if (tmp == 0) goto r_fmt;
+}
 
-:bp s0,mode,r_fmt			is ((op3_5=1 | op3_5=3) & mode) ... & s0 ; r_fmt { }
+:bp s0,mode,r_fmt			is ((op3_5=1 | op3_5=3) & mode) ... & s0 ; r_fmt {
+    local tmp:1 = ((*[ram] s0) << mode) & 0x1;
+    if (tmp == 1) goto r_fmt;
+}
 
-:bpc m_fmt,B_fmt,r_fmt		is op0_8=0xa7 ; m_fmt & B_fmt ; r_fmt { }
+:bpc m_fmt,B_fmt,r_fmt		is op0_8=0xa7 ; m_fmt & B_fmt ; r_fmt {
+    local tmp:1 = *[ram]:1 m_fmt;
+    local bit:1 = (tmp << B_fmt) & 0x1;
+    if (bit == 0) goto <end>;
+    *[ram]:1 m_fmt = tmp & ~(0x1 << B_fmt);
+    goto r_fmt;
+    <end>
+}
 
-:bpm m_fmt,B_fmt,r_fmt		is op0_8=0xe7 ; m_fmt & B_fmt ; r_fmt { }
+:bpm m_fmt,B_fmt,r_fmt		is op0_8=0xe7 ; m_fmt & B_fmt ; r_fmt {
+    local tmp:1 = ((*[ram] m_fmt) << B_fmt) & 0x1;
+    if (tmp == 1) goto r_fmt;
+}
 
 :clr1 s0,mode				is ((op3_5=0x19 | op3_5=0x1b) & mode) ... & s0 { }
 
@@ -263,43 +303,89 @@ macro additionAregWithCarry(op) {
 
 ########### BRANCH INSTRUCTIONS
 
-:be^alt ias01M,r_fmt 		is (op3_5=0 & mode!=2 & mode>0 & mode<7 & alt) ... & ias01M ; r_fmt { }
-:be ias01M,i_fmt,r_fmt		is (op3_5=0 & mode=2) ... & ias01M ; i_fmt ; r_fmt { }
-
-:bne^alt ias01M,r_fmt 		is (op3_5=2 & mode!=2 & mode>0 & mode<7 & alt) ... & ias01M ; r_fmt { }
-:bne ias01M,i_fmt,r_fmt		is (op3_5=2 & mode=2) ... & ias01M ; i_fmt ; r_fmt { }
-
-:bnz r_fmt					is op0_8=0x99 ; r_fmt { }
-
-:bnzw r_fmt					is op0_8=0x51 ; r_fmt { }
-
-:br R_fmt					is (rel3_5=0xd | rel3_5=0xf) & R_fmt { }
-
-:bz r_fmt					is op0_8=0x89 ; r_fmt { }
-
-:bzw r_fmt					is op0_8=0x41 ; r_fmt { }
-
-:call A_fmt					is (op1_7=0x18) & A_fmt { }
-
-:dbnz^alt ias01M,r_fmt 		is (op3_5=4 & mode>1 & mode<7 & alt) ... & ias01M ; r_fmt { }
-
-:dbz^alt ias01M,r_fmt 		is (op3_5=6 & mode>1 & mode<7 & alt) ... & ias01M ; r_fmt { }
-
-:jmp A_fmt					is (op1_7=0x10) & A_fmt { }
-
-:rcall R_fmt				is (rel3_5=9 | rel3_5=0xb) & R_fmt { }
-
-:rcalla 					is op0_8 = 0x10 {}
-
-:ret 						is op0_8 = 0xa0 {
-	PC[16,1] = (*[bitdata]:1 SP) & 0x1;
-	SP = SP - 1;
-	PC[0,16] = *[ram]:2 SP;
-	BNK = ( *[bitdata]:1 SP ) & 0x1;
-	SP = SP - 1;
+:be^alt ias01M,r_fmt 		is (op3_5=0 & mode!=2 & mode>0 & mode<7 & alt) ... & ias01M ; r_fmt {
+    local tmp:1 = ias01M[0,8];
+    if (A == tmp) goto r_fmt;
+}
+:be ias01M,i_fmt,r_fmt		is (op3_5=0 & mode=2) ... & ias01M ; i_fmt ; r_fmt {
+    local tmp:1 = ias01M[0,8];
+    if (i_fmt == tmp) goto r_fmt;
 }
 
-:reti 						is op0_8 = 0xb0 { }
+:bne^alt ias01M,r_fmt 		is (op3_5=2 & mode!=2 & mode>0 & mode<7 & alt) ... & ias01M ; r_fmt {
+    local tmp:1 = ias01M[0,8];
+    if (A != tmp) goto r_fmt;
+}
+:bne ias01M,i_fmt,r_fmt		is (op3_5=2 & mode=2) ... & ias01M ; i_fmt ; r_fmt {
+    local tmp:1 = ias01M[0,8];
+    if (i_fmt != tmp) goto r_fmt;
+}
+
+:bnz r_fmt					is op0_8=0x99 ; r_fmt {
+    if (A != 0) goto r_fmt;
+}
+
+:bnzw r_fmt					is op0_8=0x51 ; r_fmt {
+    if (A != 0 || B != 0) goto r_fmt;
+}
+
+:br R_fmt					is (rel3_5=0xd | rel3_5=0xf) & R_fmt {
+    goto R_fmt;
+}
+
+:bz r_fmt					is op0_8=0x89 ; r_fmt {
+    if (A == 0) goto r_fmt;
+}
+
+:bzw r_fmt					is op0_8=0x41 ; r_fmt {
+    if (A == 0 && B == 0) goto r_fmt;
+}
+
+:call A_fmt					is (op1_7=0x18) & A_fmt {
+    pushReturnPointer(inst_next);
+    call [A_fmt];
+}
+
+:dbnz^alt ias01M,r_fmt 		is (op3_5=4 & mode>1 & mode<7 & alt) ... & ias01M ; r_fmt {
+    local tmp:1 = ias01M[0,8] - 1;
+    ias01M[0,8] = tmp;
+
+    if (tmp != 0) goto r_fmt;
+}
+
+:dbz^alt ias01M,r_fmt 		is (op3_5=6 & mode>1 & mode<7 & alt) ... & ias01M ; r_fmt {
+    local tmp:1 = ias01M[0,8] - 1;
+    ias01M[0,8] = tmp;
+
+    if (tmp == 0) goto r_fmt;
+}
+
+:jmp A_fmt					is (op1_7=0x10) & A_fmt {
+    goto [A_fmt];
+}
+
+:rcall R_fmt				is (rel3_5=9 | rel3_5=0xb) & R_fmt {
+    pushReturnPointer(inst_next);
+    call R_fmt;
+}
+
+:rcalla 					is op0_8 = 0x10 {
+    pushReturnPointer(inst_next);
+    call [inst_next + A];
+}
+
+:ret 						is op0_8 = 0xa0 {
+    local tmp:3;
+    popReturnPointer(tmp);
+    return [tmp];
+}
+
+:reti 						is op0_8 = 0xb0 {
+    local tmp:3;
+    popReturnPointer(tmp);
+    # TODO: interrupt magic
+    return [tmp];
+}
 
 ########### AUXILIARY INSTRUCTIONS
 
