@@ -47,6 +47,8 @@ define ram offset=0xFE00 size=2 [ BA ];
 @define AC 		"PSW[6,1]"  # AC (bit 6): Auxiliary carry flag
 @define CY 		"PSW[7,1]"  # CY (bit 7): Carry flag
 
+#### TODO: (almost) none of the implementations respect bit 8 (see Table 2.4.2 in docs)
+
 ########################## Indirect Addressing Registers
 
 define ram offset=0x0000 size=2 [ R0  R1  R2  R3  R4  R5  R6  R7
@@ -113,17 +115,18 @@ I_fmt: "#"short0	is short0 { tmp:2 = short0; export tmp; } 										#I Immediat
 r_fmt: address	 	is byte0s [ address = inst_next + byte0s; ] { export *:3 address; } 	        #r
 zero_fmt: byte0 	is byte0 { export *[ram]:2 byte0; }												#0 Direct Addressing (dst) 00h-FFh
 s_fmt: address	 	is byte0 [ address = 0xfe00 | byte0; ] { export *[ram]:2 address; }				#s Direct Addressing (dst) FE00h-FEFFh
-A_fmt: address		is op0_1 & (byte8 & byte16) [ address = (byte8 | byte16<<8 | op0_1<<16) | (inst_start & 0x20000); ] { tmp:3 = address; export tmp; } #A
+A_fmt: address		is op0_1 & (byte8 & byte16) [ address = (byte8 | byte16<<8 | op0_1<<16) | (inst_start & 0x20000); ] { export *:3 address; } #A
 m_fmt: address		is short0 [ address = short0 & 0x1fff; ] { tmp:2 = address; export tmp; }		#m
 B_fmt: bits13_3		is bits13_3 { tmp:1 = bits13_3; export tmp; }		 							#B
 
 R_fmt: address		is sign4=0 & offL & offH [ address = ((inst_next + ((offH<<8) | offL))            & 0x1FFFF) | (inst_start & 0x20000); ] { export *:3 address; }	# positive offset
 R_fmt: address		is sign4=1 & offL & offH [ address = ((inst_next + ((offH<<8) | offL | 0xFFF800)) & 0x1FFFF) | (inst_start & 0x20000); ] { export *:3 address; }	# negative offset
 
-at_fmt: [Rn1] 		is bit0=0 & bit7=0 & Rn1 { export *[ram]:2 Rn1; }								#_@ Indirect Register Indirect Addressing ([Rn])
-at_fmt: [Rn1",C]"	is bit0=1 & bit7=0 & Rn1 { tmp:2 = Rn1 + sext(C); export *[ram]:2 tmp; }		#_@ Indirect Register + C Register Indirect Addressing ([Rn, C])
-at_fmt: [+off0_7s] 	is bit7=1 & bit6=0 & off0_7s { tmp:2 = R0 + off0_7s; export *[ram]:2 tmp; }		#_@ Indirect Register (R0) + Offset Value Indirect Addressing ([off])
-at_fmt: [-off0_7s]	is bit7=1 & bit6=1 & off0_7s { tmp:2 = R0 + off0_7s; export *[ram]:2 tmp; }		#_@ Indirect Register (R0) + negative Offset Value Indirect Addressing ([off])
+at_fmt_p: [Rn1] 		is bit0=0 & bit7=0 & Rn1 { export Rn1; }								    #_@ Indirect Register Indirect Addressing ([Rn])
+at_fmt_p: [Rn1",C]"	is bit0=1 & bit7=0 & Rn1 { tmp:2 = Rn1 + sext(C); export tmp; }		            #_@ Indirect Register + C Register Indirect Addressing ([Rn, C])
+at_fmt_p: [+off0_7s] 	is bit7=1 & bit6=0 & off0_7s { tmp:2 = R0 + off0_7s; export tmp; }		    #_@ Indirect Register (R0) + Offset Value Indirect Addressing ([off])
+at_fmt_p: [-off0_7s]	is bit7=1 & bit6=1 & off0_7s { tmp:2 = R0 + off0_7s; export tmp; }		    #_@ Indirect Register (R0) + negative Offset Value Indirect Addressing ([off])
+at_fmt: at_fmt_p    is at_fmt_p { export *[ram]:2 at_fmt_p; }
 
 ias01M: "#"byte0	is mode=1 ; byte0 { tmp:2 = byte0; export tmp; } 								#_i
 ias01M: at_fmt		is mode=2 ; at_fmt { export at_fmt; }											#_@
@@ -160,7 +163,7 @@ macro popReturnPointer(out) {
 	tmp[16,1] = (*[bitdata]:1 SP) & 0x1;
 	SP = SP - 1;
 	tmp[0,16] = *[ram]:2 SP;
-	tmp[17,1] = ( *[bitdata]:1 SP ) & 0x1;
+	tmp[17,1] = (*[bitdata]:1 SP) & 0x1;
 	SP = SP - 1;
     out = tmp;
 }
@@ -241,8 +244,10 @@ macro pushReturnPointer(x) {
     local tmp:1 = *[ram]:1 m_fmt;
     local bit:1 = (tmp << B_fmt) & 0x1;
     if (bit == 0) goto <end>;
+
     *[ram]:1 m_fmt = tmp & ~(0x1 << B_fmt);
     goto r_fmt;
+
     <end>
 }
 
@@ -266,28 +271,67 @@ macro pushReturnPointer(x) {
 
 ########### 8/16-BIT TRANSFER INSTRUCTIONS
 
-:ld^alt ias01M 				is (op3_5=0x10 & mode>0 & mode<8 & alt) ... & ias01M { }
+:ld^alt ias01M 				is (op3_5=0x10 & mode>0 & mode<7 & alt) ... & ias01M {
+    A = ias01M[0,8];
+}
 
-:mov^alt i_fmt,ias01M 		is (op3_5=8 & mode>1 & mode<7 & alt) ... & ias01M ; i_fmt { }
+:mov^alt i_fmt,ias01M 		is (op3_5=8 & mode>1 & mode<7 & alt) ... & ias01M ; i_fmt {
+    ias01M[0,8] = i_fmt;
+}
 
-:st^alt ias01M 				is (op3_5=0x12 & mode>1 & mode<8 & alt) ... & ias01M { }
+:st^alt ias01M 				is (op3_5=0x12 & mode>1 & mode<7 & alt) ... & ias01M {
+    ias01M[0,8] = A;
+}
 
-:xch^alt ias01M 			is (op3_5=0xa & mode>1 & mode<8 & alt) ... & ias01M { }
+:xch^alt ias01M 			is (op3_5=0xa & mode>1 & mode<7 & alt) ... & ias01M {
+    local tmp:1 = A;
+    A = ias01M[0,8];
+    ias01M[0,8] = tmp;
+}
 
-:ldx at_fmt					is op0_8=0x71 ; at_fmt {}
+:ldx at_fmt_p					is op0_8=0x71 ; at_fmt_p {
+    local tmp:3 = (zext(B) << 16) | zext(at_fmt_p);
+    A = *[xdata] tmp;
+}
 
-:stx at_fmt					is op0_8=0x91 ; at_fmt {}
+:stx at_fmt_p					is op0_8=0x91 ; at_fmt_p {
+    local tmp:3 = (zext(B) << 16) | zext(at_fmt_p);
+    *[xdata] tmp = A;
+}
 
 
 ########### 16-BIT TRANSFER INSTRUCTIONS
 
-:ldcw at_fmt				is op0_8=0x88 ; at_fmt {}
+:ldcw at_fmt_p				is op0_8=0x88 ; at_fmt_p {
+    local tmp:3 = (zext($(LDCBNK)) << 16) | zext(at_fmt_p);
+    BA = *[rom] tmp;
+}
 
-:ldw at_fmt					is op0_8=7 ; at_fmt { }
+:ldw at_fmt					is op0_8=0x07 ; at_fmt {
+    BA = at_fmt;
+}
 
-:ldw I_fmt					is op0_8=0x47 ; I_fmt { }
+:ldw I_fmt					is op0_8=0x47 ; I_fmt {
+    BA = I_fmt;
+}
 
-:stw at_fmt					is op0_8=0x17 ; at_fmt { }
+:stw at_fmt					is op0_8=0x17 ; at_fmt {
+    at_fmt = BA;
+}
+
+:ldw ias01M					is op0_8=0x87 ... & ias01M {
+    BA = ias01M;
+}
+
+:stw ias01M					is op0_8=0x97 ... & ias01M {
+    ias01M = BA;
+}
+
+:xchw ias01M					is op0_8=0x57 ... & ias01M {
+    local tmp:2 = BA;
+    BA = ias01M;
+    ias01M = tmp;
+}
 
 
 ########### ROTATE/SHIFT INSTRUCTIONS
@@ -296,7 +340,7 @@ macro pushReturnPointer(x) {
 
 :rorc 						is op0_8 = 0xd0 { }
 
-:rol is op0_8 = 0xE0 { }
+:rol                        is op0_8 = 0xE0 { }
 
 :rolc 						is op0_8 = 0xf0 { }
 
@@ -343,7 +387,7 @@ macro pushReturnPointer(x) {
 
 :call A_fmt					is (op1_7=0x18) & A_fmt {
     pushReturnPointer(inst_next);
-    call [A_fmt];
+    call A_fmt;
 }
 
 :dbnz^alt ias01M,r_fmt 		is (op3_5=4 & mode>1 & mode<7 & alt) ... & ias01M ; r_fmt {
@@ -361,7 +405,7 @@ macro pushReturnPointer(x) {
 }
 
 :jmp A_fmt					is (op1_7=0x10) & A_fmt {
-    goto [A_fmt];
+    goto A_fmt;
 }
 
 :rcall R_fmt				is (rel3_5=9 | rel3_5=0xb) & R_fmt {
@@ -395,33 +439,65 @@ macro pushReturnPointer(x) {
 
 ########### STACK CONTROL INSTRUCTIONS
 
-:pop^alt ias01M 			is (op3_5=0xe & mode>1 & mode<8 & alt) ... & ias01M { }
-
-:popw at_fmt				is op0_8=0x37 ; at_fmt {}
-
-:pop_ba 					is op0_8 = 0x70 {
-#	B = *[ram]:1 SP;
-#	SP = SP - 1;
-#	A = *[ram]:1 SP;
-#	SP = SP - 1;
+:pop^alt ias01M 			is (op3_5=0xe & mode>1 & mode<7 & alt) ... & ias01M {
+    ias01M[0,8] = *[ram] SP;
+    SP = SP - 1;
 }
 
-:pop_p						is op0_8=0x90 { }
+:popw ias01M 			is (op3_5=0xe & mode=7) ... & ias01M {
+    SP = SP - 1;
+    ias01M = *[ram]:2 SP;
+    SP = SP - 1;
+}
 
-:push^alt ias01M 			is (op3_5=0xc & mode>0 & mode<8 & alt) ... & ias01M { }
+:popw at_fmt				is op0_8=0x37 ; at_fmt {
+    SP = SP - 1;
+    at_fmt = *[ram]:2 SP;
+    SP = SP - 1;
+}
 
-:pushw at_fmt				is op0_8=0x27 ; at_fmt {}
+:pop_ba 					is op0_8 = 0x70 {
+    B = *[ram]:1 SP;
+    SP = SP - 1;
+    A = *[ram]:1 SP;
+    SP = SP - 1;
+}
+
+:pop_p						is op0_8=0x90 {
+    PSW = *[ram]:1 SP;
+    SP = SP - 1;
+}
+
+:push^alt ias01M 			is (op3_5=0xc & mode>0 & mode<7 & alt) ... & ias01M {
+    local tmp:1 = ias01M[0,8];
+    SP = SP + 1;
+    *[ram]:1 SP = tmp;
+}
+
+:pushw ias01M 			is (op3_5=0xc & mode=7) ... & ias01M {
+    local tmp:2 = ias01M;
+    SP = SP + 1;
+    *[ram]:2 SP = tmp;
+    SP = SP + 1;
+}
+
+:pushw at_fmt				is op0_8=0x27 ; at_fmt {
+    local tmp:2 = at_fmt;
+    SP = SP + 1;
+    *[ram]:2 SP = tmp;
+    SP = SP + 1;
+}
 
 :push_ba 					is op0_8 = 0x60 {
-#	SP = SP + 1;
-#	*[ram]:1 SP = A;
-#	SP = SP + 1;
-#	*[ram]:1 SP = B;
+    SP = SP + 1;
+    *[ram]:1 SP = A;
+    SP = SP + 1;
+    *[ram]:1 SP = B;
 }
 
 :push_p 					is op0_8 = 0x80 {
-#	SP = SP + 1;
-#	*[ram]:1 SP = PSW;
+    SP = SP + 1;
+    *[ram]:1 SP = PSW;
 }
 
 

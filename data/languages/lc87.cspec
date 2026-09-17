@@ -5,6 +5,11 @@
 <compiler_spec>
 	<data_organization>
 		<pointer_size value="2" />
+		<short_size value="2" />
+		<integer_size value="2" />
+		<long_size value="4" />
+		<float_size value="4" />
+		<double_size value="8" />
 	</data_organization>
 	<global>
 		<range space="rom"/>
@@ -14,129 +19,128 @@
 	</global>
 	<stackpointer register="SP" space="ram" growth="positive" />
 	<default_proto>
-		<prototype name="default" extrapop="2" stackshift="2">
-			<input></input>
-			<output></output>
+		<prototype name="default" extrapop="-2" stackshift="-2" strategy="register">
+			<input>
+				<pentry minsize="1" maxsize="2">
+					<register name="R2"/>
+				</pentry>
+				<pentry minsize="1" maxsize="2">
+					<register name="R3"/>
+				</pentry>
+				<pentry minsize="1" maxsize="2">
+					<register name="R4"/>
+				</pentry>
+				<pentry minsize="1" maxsize="2">
+					<register name="R5"/>
+				</pentry>
+				<pentry minsize="1" maxsize="2">
+					<register name="R6"/>
+				</pentry>
+				<pentry minsize="1" maxsize="2">
+					<register name="R7"/>
+				</pentry>
+				<pentry minsize="1" maxsize="2">
+					<register name="R8"/>
+				</pentry>
+				<pentry minsize="1" maxsize="2">
+					<register name="R9"/>
+				</pentry>
+				<pentry minsize="1" maxsize="2">
+					<register name="R10"/>
+				</pentry>
+				<pentry minsize="1" maxsize="2">
+					<register name="R11"/>
+				</pentry>
+				<pentry minsize="1" maxsize="2">
+					<register name="R12"/>
+				</pentry>
+				<pentry minsize="1" maxsize="2">
+					<register name="R13"/>
+				</pentry>
+				<pentry minsize="1" maxsize="2">
+					<register name="R14"/>
+				</pentry>
+				<pentry minsize="1" maxsize="2">
+					<register name="R15"/>
+				</pentry>
+				<pentry minsize="1" maxsize="500" align="1">
+					<addr offset="0" space="stack"/>
+				</pentry>
+			</input>
+			<output>
+				<pentry minsize="1" maxsize="1">
+					<register name="A"/>
+				</pentry>
+				<pentry minsize="2" maxsize="2">
+					<register name="BA"/>
+				</pentry>
+			</output>
+			<unaffected>
+				<register name="SP"/>
+				<register name="R0"/>
+				<register name="R2"/>
+				<register name="R3"/>
+				<register name="R4"/>
+				<register name="R5"/>
+				<register name="R6"/>
+				<register name="R7"/>
+				<register name="R8"/>
+				<register name="R9"/>
+				<register name="R10"/>
+				<register name="R11"/>
+				<register name="R12"/>
+				<register name="R13"/>
+				<register name="R14"/>
+				<register name="R15"/>
+				<register name="R16"/>
+				<register name="R17"/>
+				<register name="R18"/>
+				<register name="R19"/>
+				<register name="R20"/>
+				<register name="R21"/>
+				<register name="R22"/>
+				<register name="R23"/>
+				<register name="R24"/>
+				<register name="R25"/>
+				<register name="R26"/>
+				<register name="R27"/>
+				<register name="R28"/>
+				<register name="R29"/>
+				<register name="R30"/>
+				<register name="R31"/>
+				<register name="R32"/>
+				<register name="R33"/>
+				<register name="R34"/>
+				<register name="R35"/>
+				<register name="R36"/>
+				<register name="R37"/>
+				<register name="R38"/>
+				<register name="R39"/>
+				<register name="R40"/>
+				<register name="R41"/>
+				<register name="R42"/>
+				<register name="R43"/>
+				<register name="R44"/>
+				<register name="R45"/>
+				<register name="R46"/>
+				<register name="R47"/>
+				<register name="R48"/>
+				<register name="R49"/>
+				<register name="R50"/>
+				<register name="R51"/>
+				<register name="R52"/>
+				<register name="R53"/>
+				<register name="R54"/>
+				<register name="R55"/>
+				<register name="R56"/>
+				<register name="R57"/>
+				<register name="R58"/>
+				<register name="R59"/>
+				<register name="R60"/>
+				<register name="R61"/>
+				<register name="R62"/>
+				<register name="R63"/>
+			</unaffected>
 		</prototype>
 	</default_proto>
 </compiler_spec>
-
-<!--
-<compiler_spec>
-  <data_organization>
-	<pointer_size value="2" />
-  </data_organization>
-  <global>
-	<range space="ram"/>
-	<range space="io"/>
-  </global>
-  <stackpointer register="SP" space="ram"/>
-  <default_proto>
-	<prototype name="__asmA" extrapop="2" stackshift="2" strategy="register">
-	  <input>
-		<pentry minsize="1" maxsize="1">
-		  <register name="A"/>
-		</pentry>
-		<pentry minsize="1" maxsize="2">
-		  <register name="BC"/>
-		</pentry>
-		<pentry minsize="1" maxsize="2">
-		  <register name="HL"/>
-		</pentry>
-		<pentry minsize="1" maxsize="2">
-		  <register name="DE"/>
-		</pentry>
-		<pentry minsize="1" maxsize="2">
-		  <register name="IY"/>
-		</pentry>
-		<pentry minsize="1" maxsize="2">
-		  <register name="IX"/>
-		</pentry>
-		<pentry minsize="1" maxsize="500" align="2">
-		  <addr offset="2" space="stack"/>
-		</pentry>
-	  </input>
-	  <output>
-		<pentry minsize="1" maxsize="1">
-		  <register name="A"/>
-		</pentry>
-	  </output>
-	  <unaffected>
-		<register name="SP"/>
-		<register name="BC_"/>
-		<register name="HL_"/>
-		<register name="DE_"/>
-		<register name="AF_"/>
-		<register name="rBBR"/>
-	  </unaffected>
-	</prototype>
-  </default_proto>
-  <prototype name="__asmAF" extrapop="2" stackshift="2" strategy="register">
-	  <input>
-		<pentry minsize="1" maxsize="1">
-		  <register name="A"/>
-		</pentry>
-		<pentry minsize="1" maxsize="2">
-		  <register name="BC"/>
-		</pentry>
-		<pentry minsize="1" maxsize="2">
-		  <register name="HL"/>
-		</pentry>
-		<pentry minsize="1" maxsize="2">
-		  <register name="DE"/>
-		</pentry>
-		<pentry minsize="1" maxsize="2">
-		  <register name="IY"/>
-		</pentry>
-		<pentry minsize="1" maxsize="2">
-		  <register name="IX"/>
-		</pentry>
-		<pentry minsize="1" maxsize="500" align="2">
-		  <addr offset="2" space="stack"/>
-		</pentry>
-	  </input>
-	  <output>
-		<pentry minsize="1" maxsize="2">
-		  <register name="AF"/>
-		</pentry>
-	  </output>
-	  <unaffected>
-		<register name="SP"/>
-		<register name="rBBR"/>
-		<register name="BC_"/>
-		<register name="HL_"/>
-		<register name="DE_"/>
-		<register name="AF_"/>
-	  </unaffected>
-  </prototype>
-  <prototype name="__stdcall" extrapop="2" stackshift="2">
-	  <input>
-		<pentry minsize="1" maxsize="1">
-		  <register name="A"/>
-		</pentry>
-		<pentry minsize="1" maxsize="2">
-		  <register name="BC"/>
-		</pentry>
-		<pentry minsize="1" maxsize="2">
-		  <register name="HL"/>
-		</pentry>
-		<pentry minsize="1" maxsize="500" align="2">
-		  <addr offset="2" space="stack"/>
-		</pentry>
-	  </input>
-	  <output>
-		<pentry minsize="1" maxsize="1">
-		  <register name="AF"/>
-		</pentry>
-	  </output>
-	  <unaffected>
-		<register name="SP"/>
-		<register name="rBBR"/>
-		<register name="BC_"/>
-		<register name="HL_"/>
-		<register name="DE_"/>
-		<register name="AF_"/>
-	  </unaffected>
-	</prototype>
-</compiler_spec>
- -->
