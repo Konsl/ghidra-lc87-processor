@@ -9,3 +9,5 @@ build/
 dist/
 *.swp
 .antProperties.xml
+
+test-config/

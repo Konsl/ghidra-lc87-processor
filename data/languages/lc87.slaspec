@@ -158,7 +158,7 @@ macro additionAregWithCarry(op) {
 	$(PF) = A[0,1] ^ A[1,1] ^ A[2,1] ^ A[3,1] ^ A[4,1] ^ A[5,1] ^ A[6,1] ^ A[7,1];
 }
 
-macro popReturnPointer(out) {
+macro popRP(out) {
     local tmp:3 = 0;
 	tmp[16,1] = (*[bitdata]:1 SP) & 0x1;
 	SP = SP - 1;
@@ -168,13 +168,37 @@ macro popReturnPointer(out) {
     out = tmp;
 }
 
-macro pushReturnPointer(x) {
-    local val:3 = x;
+macro pushRP(val) {
+    local tmp:3 = val;
     SP = SP + 1;
-    *[ram]:2 SP = val[0,16];
-    *[bitdata]:1 SP = val[17,1];
+    *[ram]:2 SP = tmp[0,16];
+    *[bitdata]:1 SP = tmp[17,1];
     SP = SP + 1;
-    *[bitdata]:1 SP = val[16,1];
+    *[bitdata]:1 SP = tmp[16,1];
+}
+
+macro pop8(out) {
+    out = *[ram] SP;
+    SP = SP - 1;
+}
+
+macro push8(val) {
+    local tmp:1 = val;
+    SP = SP + 1;
+    *[ram]:1 SP = tmp;
+}
+
+macro pop16(out) {
+    SP = SP - 1;
+    out = *[ram]:2 SP;
+    SP = SP - 1;
+}
+
+macro push16(val) {
+    local tmp:2 = val;
+    SP = SP + 1;
+    *[ram]:2 SP = tmp;
+    SP = SP + 1;
 }
 
 ########### 8/16-BIT ARITHMETIC INSTRUCTIONS
@@ -183,9 +207,13 @@ macro pushReturnPointer(x) {
 
 :addc^alt ias01M 			is (op3_5=0x16 & mode>0 & mode<7 & alt) ... & ias01M { additionAregWithCarry(ias01M); }
 
-:dec^alt ias01M 			is (op3_5=0x13 & mode>1 & mode<8 & alt) ... & ias01M { }
+:dec^alt ias01M 			is (op3_5=0x13 & mode>1 & mode<7 & alt) ... & ias01M { }
 
-:inc^alt ias01M 			is (op3_5=0x11 & mode>1 & mode<8 & alt) ... & ias01M { }
+:decw ias01M 			    is (op3_5=0x13 & mode=7) ... & ias01M { }
+
+:inc^alt ias01M 			is (op3_5=0x11 & mode>1 & mode<7 & alt) ... & ias01M { }
+
+:incw ias01M 			    is (op2_5=0x11 & mode=7 & alt) ... & ias01M { }
 
 :sub^alt ias01M 			is (op3_5=0x18 & mode>0 & mode<7 & alt) ... & ias01M { }
 
@@ -226,7 +254,7 @@ macro pushReturnPointer(x) {
 
 
 :bn s0,mode,r_fmt			is ((op3_5=5 | op3_5=7) & mode) ... & s0 ; r_fmt {
-    local tmp:1 = ((*[ram] s0) << mode) & 0x1;
+    local tmp:1 = (s0[0,8] << mode) & 0x1;
     if (tmp == 0) goto r_fmt;
 }
 
@@ -236,7 +264,7 @@ macro pushReturnPointer(x) {
 }
 
 :bp s0,mode,r_fmt			is ((op3_5=1 | op3_5=3) & mode) ... & s0 ; r_fmt {
-    local tmp:1 = ((*[ram] s0) << mode) & 0x1;
+    local tmp:1 = (s0[0,8] << mode) & 0x1;
     if (tmp == 1) goto r_fmt;
 }
 
@@ -289,12 +317,12 @@ macro pushReturnPointer(x) {
     ias01M[0,8] = tmp;
 }
 
-:ldx at_fmt_p					is op0_8=0x71 ; at_fmt_p {
+:ldx at_fmt_p				is op0_8=0x71 ; at_fmt_p {
     local tmp:3 = (zext(B) << 16) | zext(at_fmt_p);
     A = *[xdata] tmp;
 }
 
-:stx at_fmt_p					is op0_8=0x91 ; at_fmt_p {
+:stx at_fmt_p				is op0_8=0x91 ; at_fmt_p {
     local tmp:3 = (zext(B) << 16) | zext(at_fmt_p);
     *[xdata] tmp = A;
 }
@@ -327,7 +355,7 @@ macro pushReturnPointer(x) {
     ias01M = BA;
 }
 
-:xchw ias01M					is op0_8=0x57 ... & ias01M {
+:xchw ias01M				is op0_8=0x57 ... & ias01M {
     local tmp:2 = BA;
     BA = ias01M;
     ias01M = tmp;
@@ -386,7 +414,7 @@ macro pushReturnPointer(x) {
 }
 
 :call A_fmt					is (op1_7=0x18) & A_fmt {
-    pushReturnPointer(inst_next);
+    pushRP(inst_next);
     call A_fmt;
 }
 
@@ -409,24 +437,24 @@ macro pushReturnPointer(x) {
 }
 
 :rcall R_fmt				is (rel3_5=9 | rel3_5=0xb) & R_fmt {
-    pushReturnPointer(inst_next);
+    pushRP(inst_next);
     call R_fmt;
 }
 
 :rcalla 					is op0_8 = 0x10 {
-    pushReturnPointer(inst_next);
+    pushRP(inst_next);
     call [inst_next + A];
 }
 
 :ret 						is op0_8 = 0xa0 {
     local tmp:3;
-    popReturnPointer(tmp);
+    popRP(tmp);
     return [tmp];
 }
 
 :reti 						is op0_8 = 0xb0 {
     local tmp:3;
-    popReturnPointer(tmp);
+    popRP(tmp);
     # TODO: interrupt magic
     return [tmp];
 }
@@ -440,64 +468,43 @@ macro pushReturnPointer(x) {
 ########### STACK CONTROL INSTRUCTIONS
 
 :pop^alt ias01M 			is (op3_5=0xe & mode>1 & mode<7 & alt) ... & ias01M {
-    ias01M[0,8] = *[ram] SP;
-    SP = SP - 1;
+    pop8(ias01M[0,8]);
 }
 
-:popw ias01M 			is (op3_5=0xe & mode=7) ... & ias01M {
-    SP = SP - 1;
-    ias01M = *[ram]:2 SP;
-    SP = SP - 1;
+:popw ias01M 			    is (op3_5=0xe & mode=7) ... & ias01M {
+    pop16(ias01M);
 }
 
 :popw at_fmt				is op0_8=0x37 ; at_fmt {
-    SP = SP - 1;
-    at_fmt = *[ram]:2 SP;
-    SP = SP - 1;
+    pop16(at_fmt);
 }
 
 :pop_ba 					is op0_8 = 0x70 {
-    B = *[ram]:1 SP;
-    SP = SP - 1;
-    A = *[ram]:1 SP;
-    SP = SP - 1;
+    pop16(BA);
 }
 
 :pop_p						is op0_8=0x90 {
-    PSW = *[ram]:1 SP;
-    SP = SP - 1;
+    pop8(PSW);
 }
 
 :push^alt ias01M 			is (op3_5=0xc & mode>0 & mode<7 & alt) ... & ias01M {
-    local tmp:1 = ias01M[0,8];
-    SP = SP + 1;
-    *[ram]:1 SP = tmp;
+    push8(ias01M[0,8]);
 }
 
-:pushw ias01M 			is (op3_5=0xc & mode=7) ... & ias01M {
-    local tmp:2 = ias01M;
-    SP = SP + 1;
-    *[ram]:2 SP = tmp;
-    SP = SP + 1;
+:pushw ias01M 			    is (op3_5=0xc & mode=7) ... & ias01M {
+    push16(ias01M);
 }
 
 :pushw at_fmt				is op0_8=0x27 ; at_fmt {
-    local tmp:2 = at_fmt;
-    SP = SP + 1;
-    *[ram]:2 SP = tmp;
-    SP = SP + 1;
+    push16(at_fmt);
 }
 
 :push_ba 					is op0_8 = 0x60 {
-    SP = SP + 1;
-    *[ram]:1 SP = A;
-    SP = SP + 1;
-    *[ram]:1 SP = B;
+    push16(BA);
 }
 
 :push_p 					is op0_8 = 0x80 {
-    SP = SP + 1;
-    *[ram]:1 SP = PSW;
+    push8(PSW);
 }
 
 
