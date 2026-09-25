@@ -140,14 +140,18 @@ s0: s_fmt			is op4_1=1 ; s_fmt { export s_fmt; }											#_s
 
 ########################## Macros
 
-macro additionAreg(op) {
-	$(CY) = carry(A, op:1);
-	$(OV) = scarry(A, op:1);
-	A = A + op:1;
+macro updateParity() {
 	$(PF) = A[0,1] ^ A[1,1] ^ A[2,1] ^ A[3,1] ^ A[4,1] ^ A[5,1] ^ A[6,1] ^ A[7,1];
 }
 
-macro additionAregWithCarry(op) {
+macro add8A(op) {
+	$(CY) = carry(A, op:1);
+	$(OV) = scarry(A, op:1);
+	A = A + op:1;
+    updateParity();
+}
+
+macro addc8A(op) {
 	local CYcpy = $(CY);
 	$(CY) = carry(A, op:1);
 	$(OV) = scarry(A, op:1);
@@ -155,7 +159,25 @@ macro additionAregWithCarry(op) {
 	$(CY) = $(CY) || carry(tmp, CYcpy);
 	$(OV) = $(OV) ^^ scarry(tmp, CYcpy);
 	A = tmp + CYcpy;
-	$(PF) = A[0,1] ^ A[1,1] ^ A[2,1] ^ A[3,1] ^ A[4,1] ^ A[5,1] ^ A[6,1] ^ A[7,1];
+    updateParity();
+}
+
+macro add16BA(op) {
+	$(CY) = carry(BA, op:2);
+	$(OV) = scarry(BA, op:2);
+	BA = BA + op:2;
+    updateParity();
+}
+
+macro addc16BA(op) {
+	local CYcpy = $(CY);
+	$(CY) = carry(BA, op:2);
+	$(OV) = scarry(BA, op:2);
+	local tmp = BA + op:2;
+	$(CY) = $(CY) || carry(tmp, zext(CYcpy));
+	$(OV) = $(OV) ^^ scarry(tmp, zext(CYcpy));
+	BA = tmp + zext(CYcpy);
+    updateParity();
 }
 
 macro popRP(out) {
@@ -203,17 +225,25 @@ macro push16(val) {
 
 ########### 8/16-BIT ARITHMETIC INSTRUCTIONS
 
-:add^alt ias01M 			is (op3_5=0x14 & mode>0 & mode<7 & alt) ... & ias01M { additionAreg(ias01M); }
+:add^alt ias01M 			is (op3_5=0x14 & mode>0 & mode<7 & alt) ... & ias01M { add8A(ias01M); }
 
-:addc^alt ias01M 			is (op3_5=0x16 & mode>0 & mode<7 & alt) ... & ias01M { additionAregWithCarry(ias01M); }
+:addc^alt ias01M 			is (op3_5=0x16 & mode>0 & mode<7 & alt) ... & ias01M { addc8A(ias01M); }
 
-:dec^alt ias01M 			is (op3_5=0x13 & mode>1 & mode<7 & alt) ... & ias01M { }
+:dec^alt ias01M 			is (op3_5=0x13 & mode>1 & mode<7 & alt) ... & ias01M {
+    ias01M[0,8] = ias01M[0,8] - 1;
+}
 
-:decw ias01M 			    is (op3_5=0x13 & mode=7) ... & ias01M { }
+:decw ias01M 			    is (op3_5=0x13 & mode=7) ... & ias01M {
+    ias01M = ias01M - 1;
+}
 
-:inc^alt ias01M 			is (op3_5=0x11 & mode>1 & mode<7 & alt) ... & ias01M { }
+:inc^alt ias01M 			is (op3_5=0x11 & mode>1 & mode<7 & alt) ... & ias01M {
+    ias01M[0,8] = ias01M[0,8] + 1;
+}
 
-:incw ias01M 			    is (op2_5=0x11 & mode=7 & alt) ... & ias01M { }
+:incw ias01M 			    is (op3_5=0x11 & mode=7 & alt) ... & ias01M {
+    ias01M = ias01M + 1;
+}
 
 :sub^alt ias01M 			is (op3_5=0x18 & mode>0 & mode<7 & alt) ... & ias01M { }
 
@@ -227,16 +257,17 @@ macro push16(val) {
 :div24						is op0_8=0x40 ; byte0=0x80 { }
 :mul24						is op0_8=0x40 ; byte0=0xC0 { }
 
-:fadd 						is op0_8=0x98 ; byte0=0x00 { }
-:faddc 						is op0_8=0x98 ; byte0=0x10 { }
+:fadd 						is op0_8=0x98 ; byte0=0x00 { local tmp:1; pop8(tmp); add8A(tmp); }
+:faddc 						is op0_8=0x98 ; byte0=0x10 { local tmp:1; pop8(tmp); addc8A(tmp); }
 :fsub 						is op0_8=0x98 ; byte0=0x20 { }
 :fsubc 						is op0_8=0x98 ; byte0=0x30 { }
 :fnor 						is op0_8=0x98 ; byte0=0x40 { }
 :fand 						is op0_8=0x98 ; byte0=0x50 { }
 :for 						is op0_8=0x98 ; byte0=0x60 { }
 :fxor 						is op0_8=0x98 ; byte0=0x70 { }
-:faddw 						is op0_8=0x98 ; byte0=0x80 { }
-:faddcw 					is op0_8=0x98 ; byte0=0x90 { }
+
+:faddw 						is op0_8=0x98 ; byte0=0x80 { local tmp:2; pop16(tmp); add16BA(tmp); }
+:faddcw 					is op0_8=0x98 ; byte0=0x90 { local tmp:2; pop16(tmp); addc16BA(tmp); }
 :fsubw 						is op0_8=0x98 ; byte0=0xA0 { }
 :fsubcw 					is op0_8=0x98 ; byte0=0xB0 { }
 :fnorw 						is op0_8=0x98 ; byte0=0xC0 { }
